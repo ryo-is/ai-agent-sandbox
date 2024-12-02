@@ -1,15 +1,14 @@
 {
-  "name": "ai-agent-sandbox",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {},
-  "workspaces": [
-    "client"
-  ],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@biomejs/biome": "1.9.4"
-  }
+	"name": "ai-agent-sandbox",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {},
+	"workspaces": ["client", "server"],
+	"author": "",
+	"license": "ISC",
+	"devDependencies": {
+		"@biomejs/biome": "1.9.4",
+		"vite": "5.4.11"
+	}
 }

@@ -1,0 +1,27 @@
+{
+	"name": "server",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node dist/index.cjs",
+		"dev": "VITE_ENVIRONMENT=local vite",
+		"build": "vite build",
+		"lint": "biome lint **/*.ts",
+		"fix": "biome lint --write  **/*.ts",
+		"fmt": "biome format --write  **/*.ts"
+	},
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"cors": "2.8.5",
+		"express": "4.21.1"
+	},
+	"devDependencies": {
+		"@types/cors": "2.8.17",
+		"@types/express": "5.0.0",
+		"@types/node": "22.10.1",
+		"ts-node": "10.9.2",
+		"vite-plugin-node": "4.0.0"
+	}
+}
