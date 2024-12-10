@@ -4,7 +4,7 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {},
-	"workspaces": ["client", "server"],
+	"workspaces": ["client", "server", "mcp-server"],
 	"author": "",
 	"license": "ISC",
 	"devDependencies": {
