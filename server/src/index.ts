@@ -54,7 +54,7 @@ app.get('/', (req, res) => {
 
 app.post('/chat', async (req, res) => {
 	const controller = new ChatController(mcpClient);
-	const result = await controller.chat();
+	const result = await controller.chat(req.body.message ?? '');
 	res.json(result);
 });
 

@@ -9,7 +9,11 @@ export class ChatController {
 		this._chatService = new ChatService(mcpClient);
 	}
 
-	async chat() {
-		return 'hello';
+	async chat(message: string) {
+		// AIの応答を生成
+		const { content: systemResponse, functionCalls } =
+			await this._chatService.generateResponse(message);
+
+		return { systemResponse, functionCalls };
 	}
 }
