@@ -24,10 +24,10 @@ export const Chat = () => {
 				{messages.map((message) => (
 					<div
 						key={message.id}
-						data-chatRole={message.role}
+						data-chatrole={message.role}
 						className={styles.chatContent}
 					>
-						<div className={styles.balloon} data-chatRole={message.role}>
+						<div className={styles.balloon} data-chatrole={message.role}>
 							{message.content}
 						</div>
 					</div>

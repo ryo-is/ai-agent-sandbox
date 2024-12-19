@@ -22,12 +22,13 @@ export const useChatMessage = () => {
 
 			try {
 				const data = await postMessage(message);
+				console.log({ data });
 
 				// システムメッセージを追加
 				const systemMessage: ChatMessage = {
 					id: `assistant-${data.timestamp}`,
 					role: 'assistant',
-					content: data.message,
+					content: data.systemResponse,
 					timestamp: data.timestamp,
 					mcpMessage: data.mcpMessage,
 					functionCalls: data.functionCalls,

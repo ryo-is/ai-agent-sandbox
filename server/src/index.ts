@@ -58,6 +58,27 @@ app.post('/chat', async (req, res) => {
 	res.json(result);
 });
 
+app.post('/chat-vertex', async (req, res) => {
+	const controller = new ChatController(mcpClient);
+	try {
+		const result = await controller.chatWithVertexAi(req.body.message ?? '');
+		res.json(result);
+	} catch (error) {
+		if (error instanceof Error) {
+			console.error(error.stack);
+			res.status(400).json({
+				status: 'error',
+				message: error.message,
+			});
+			return;
+		}
+		res.status(500).json({
+			status: 'error',
+			message: 'Unexpected Error',
+		});
+	}
+});
+
 if (import.meta.env.PROD) {
 	app.listen(3000);
 	console.log('listening on http://localhost:3000/');
