@@ -7,6 +7,9 @@ import {
 	type FunctionDeclarationSchema,
 	type Content,
 	type FunctionResponsePart,
+	type GenerateContentResponse,
+	type Part,
+	FinishReason,
 } from '@google-cloud/vertexai';
 
 export class ChatWithVertexService {
@@ -36,7 +39,36 @@ export class ChatWithVertexService {
 		return functionDeclarations;
 	}
 
-	async generateResponse(message: string): Promise<{ content: string }> {
+	#judgeFunctionCall(parts: Part[]) {
+		return parts.some((part) => part?.functionCall);
+	}
+
+	#mergeTextParts(
+		response: Required<Pick<GenerateContentResponse, 'candidates'>>,
+	) {
+		let mergeText = '';
+		if (response.candidates[0].content.parts.length >= 2) {
+			for (const part of response.candidates[0].content.parts) {
+				if ('text' in part) {
+					mergeText += part.text;
+				}
+			}
+			response.candidates[0].content.parts = [{ text: mergeText }];
+		}
+		return response;
+	}
+
+	#pickOnlyFunctionCall(
+		response: Required<Pick<GenerateContentResponse, 'candidates'>>,
+	): GenerateContentResponse {
+		const pickFunctionCallPart = response.candidates[0].content.parts.filter(
+			(part) => part.functionCall,
+		);
+		response.candidates[0].content.parts = pickFunctionCallPart;
+		return response;
+	}
+
+	async generateResponse(message: string): Promise<GenerateContentResponse> {
 		try {
 			const tools = await this._mcpClient.listTools();
 			const functionDeclarations = this.#createFunctionDeclaration(tools.tools);
@@ -47,7 +79,8 @@ export class ChatWithVertexService {
 
 			const model = this._vertexAi.preview.getGenerativeModel({
 				model: 'gemini-1.5-flash-002',
-				systemInstruction: '',
+				systemInstruction:
+					'都道府県名や地名、都市名が入力された場合にその文字をローマ字もしくは英語に変換してください。',
 				generationConfig: {
 					maxOutputTokens: 8192,
 					temperature: 1,
@@ -78,71 +111,80 @@ export class ChatWithVertexService {
 				tools: [{ functionDeclarations }],
 				history,
 			});
-			let chunk = await chat.sendMessageStream(message);
-			console.log('===================== chunk =====================');
-			console.log(JSON.stringify(await chunk.response));
 
-			for await (const content of chunk.stream) {
-				if (!content.candidates) {
-					throw new Error('no candidates');
+			let sendMessage: string | Array<string | Part> = message;
+
+			while (true) {
+				const responseFromAi = await chat.sendMessage(sendMessage);
+				let response = responseFromAi.response;
+				console.log('===================== response =====================');
+				console.log(JSON.stringify(response));
+				if (!response.candidates) {
+					throw new Error('vertex ai call error');
 				}
 
-				const targetCondidate = content.candidates[0];
+				if (!this.#judgeFunctionCall(response.candidates[0].content.parts)) {
+					return this.#mergeTextParts(
+						response as Required<Pick<GenerateContentResponse, 'candidates'>>,
+					);
+				}
 
-				history.push({
-					role: targetCondidate.content.role,
-					parts: targetCondidate.content.parts,
-				});
+				response = this.#pickOnlyFunctionCall(
+					response as Required<Pick<GenerateContentResponse, 'candidates'>>,
+				);
+				if (!response.candidates) {
+					throw new Error('function call response error');
+				}
 
-				for (const part of targetCondidate.content.parts) {
-					console.log('===================== part =====================');
-					console.log(JSON.stringify(part));
-
-					if (!part.functionCall) {
+				sendMessage = [];
+				for (const p of response.candidates[0].content.parts) {
+					if (!p.functionCall) {
+						if (response.candidates[0].finishReason) {
+							switch (response.candidates[0].finishReason) {
+								case FinishReason.STOP:
+									console.log('STOP');
+									return response;
+								// TODO; 他エラーケースについて要確認
+								case FinishReason.FINISH_REASON_UNSPECIFIED:
+									break;
+								case FinishReason.MAX_TOKENS:
+									break;
+								case FinishReason.PROHIBITED_CONTENT:
+									break;
+								default:
+									break;
+							}
+							continue;
+						}
 						continue;
 					}
 
-					const functionCall = part.functionCall;
-					const tool = functionDeclarations.find(
-						(fd) => fd.name === functionCall.name,
-					);
-					if (!tool) {
-						throw new Error(`Tool ${functionCall.name} not found`);
+					const { name, args } = p.functionCall;
+					const result = await this._mcpClient.callTool({
+						name,
+						arguments: args as { [key: string]: unknown },
+					});
+					console.log('===================== result =====================');
+					console.log(JSON.stringify(result));
+
+					if (!result || !Array.isArray(result.content)) {
+						throw new Error('Invalid result format');
 					}
 
-					try {
-						const result = await this._mcpClient.callTool({
-							name: tool.name,
-							arguments: functionCall.args as Record<string, unknown>,
-						});
-						const functionResponsePart: FunctionResponsePart = {
-							functionResponse: {
-								name: functionCall.name,
-								response: {
-									value: result.content,
-								},
-							},
-						};
-						chunk = await chat.sendMessageStream([functionResponsePart]);
-						console.log(
-							'===================== chunk in for loop =====================',
-						);
-						console.log(JSON.stringify(await chunk.response));
-					} catch (error) {
-						console.error('Error function calling:', error);
-						throw error;
-					}
+					const functionResponsePart: FunctionResponsePart = {
+						functionResponse: {
+							name,
+							response: result.content[0],
+						},
+					};
+
+					sendMessage.push(functionResponsePart);
+					console.log(
+						'===================== sendMessage =====================',
+					);
+					console.log(JSON.stringify(sendMessage));
 				}
 			}
-
-			console.log('===================== final chunk =====================');
-			console.log(JSON.stringify(await chunk.response));
-			const finalResponse = await chunk.response;
-			return {
-				content: finalResponse.candidates
-					? (finalResponse.candidates[0].content.parts[0].text ?? '')
-					: '',
-			};
 		} catch (error) {
 			console.error('Error generating response with VertexAI:', error);
 			throw error;

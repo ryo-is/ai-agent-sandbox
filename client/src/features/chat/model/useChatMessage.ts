@@ -3,6 +3,13 @@ import type { ChatMessage } from '../../../entities/chat/model/messages';
 import { postMessage } from '../api/postMessage';
 import { useCallback } from 'react';
 
+type Content = {
+	parts: {
+		text: string;
+	}[];
+	role: string;
+};
+
 const messagesAtom = atom<ChatMessage[]>([]);
 
 export const useChatMessage = () => {
@@ -21,17 +28,37 @@ export const useChatMessage = () => {
 			setMessages((prev) => [...prev, userMessage]);
 
 			try {
-				const data = await postMessage(message);
-				console.log({ data });
+				const { response } = await postMessage(message);
+				console.log({ response });
+
+				if (!response?.body) {
+					throw new Error('レスポンスデータの取得に失敗しました');
+				}
+
+				const reader = response.body.getReader();
+				const decoder = new TextDecoder('utf-8');
+				let content = '';
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) {
+						break;
+					}
+
+					if (value) {
+						const chunk = decoder.decode(value, { stream: true });
+						const parsedContent = JSON.parse(chunk) as unknown as Content;
+						if ('parts' in parsedContent) {
+							content += parsedContent.parts[0].text;
+						}
+					}
+				}
 
 				// システムメッセージを追加
 				const systemMessage: ChatMessage = {
-					id: `assistant-${data.timestamp}`,
+					id: `assistant-${timestamp}`,
 					role: 'assistant',
-					content: data.systemResponse,
-					timestamp: data.timestamp,
-					mcpMessage: data.mcpMessage,
-					functionCalls: data.functionCalls,
+					content: content,
+					timestamp: timestamp,
 				};
 				setMessages((prev) => [...prev, systemMessage]);
 			} catch (error) {

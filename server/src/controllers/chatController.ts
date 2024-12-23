@@ -1,6 +1,7 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { ChatService } from '../services/chatService';
 import { ChatWithVertexService } from '../services/chatWithVertexService';
+import { Readable } from 'node:stream';
 
 export class ChatController {
 	private _chatService: ChatService;
@@ -20,8 +21,16 @@ export class ChatController {
 	}
 
 	async chatWithVertexAi(message: string) {
-		const { content: systemResponse } =
-			await this._chatWithVertexService.generateResponse(message);
-		return { systemResponse };
+		const result = await this._chatWithVertexService.generateResponse(message);
+
+		return new Readable({
+			objectMode: true,
+			read() {
+				for (const [key, value] of Object.entries(result)) {
+					this.push({ [key]: value });
+				}
+				this.push(null);
+			},
+		});
 	}
 }
