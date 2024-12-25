@@ -70,15 +70,19 @@ app.post('/chat', async (req, res) => {
 	}
 });
 
-console.log('Attempting to start server...');
-app.listen(3000, async () => {
-	console.log(`Server is running on port ${3000}`);
-	try {
-		await initialize();
-		console.log('MCP connection established');
-	} catch (error) {
-		console.error('Failed to connect to MCP:', error);
-	}
-});
+if (import.meta.env.PROD) {
+	console.log('Attempting to start server...');
+	app.listen(3000, async () => {
+		console.log(`Server is running on port ${3000}`);
+		try {
+			await initialize();
+			console.log('MCP connection established');
+		} catch (error) {
+			console.error('Failed to connect to MCP:', error);
+		}
+	});
+} else {
+	await initialize();
+}
 
 export const viteNodeApp = app;
