@@ -11,6 +11,7 @@ import {
 	type Part,
 	FinishReason,
 } from '@google-cloud/vertexai';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 export class ChatWithVertexService {
 	private _mcpClient: Client;
@@ -21,6 +22,26 @@ export class ChatWithVertexService {
 
 		const project = import.meta.env.VITE_PROJECT_NAME;
 		this._vertexAi = new VertexAI({ project, location: 'us-central1' });
+	}
+
+	async #conectionMcpServer() {
+		// SSE transportの設定
+		const transport = new SSEClientTransport(
+			new URL('http://localhost:3334/events'),
+		);
+
+		try {
+			await this._mcpClient.connect(transport);
+			console.log('MCPサーバーに接続しました');
+		} catch (error) {
+			console.error('MCPサーバーへの接続に失敗しました:', error);
+			throw error;
+		}
+	}
+
+	#closeConnectionWithMcpServer() {
+		this._mcpClient.close();
+		console.log('MCPサーバーから切断しました');
 	}
 
 	#createFunctionDeclaration(
@@ -70,6 +91,7 @@ export class ChatWithVertexService {
 
 	async generateResponse(message: string): Promise<GenerateContentResponse> {
 		try {
+			await this.#conectionMcpServer();
 			const tools = await this._mcpClient.listTools();
 			const functionDeclarations = this.#createFunctionDeclaration(tools.tools);
 			console.log(
@@ -188,6 +210,8 @@ export class ChatWithVertexService {
 		} catch (error) {
 			console.error('Error generating response with VertexAI:', error);
 			throw error;
+		} finally {
+			this.#closeConnectionWithMcpServer();
 		}
 	}
 }

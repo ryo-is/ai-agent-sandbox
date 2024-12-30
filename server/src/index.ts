@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { EventSource } from 'eventsource';
 import { ChatController } from './controllers/chatController';
 
@@ -19,21 +18,6 @@ const mcpClient = new Client(
 		capabilities: {},
 	},
 );
-
-async function initialize() {
-	// SSE transportの設定
-	const transport = new SSEClientTransport(
-		new URL('http://localhost:3334/events'),
-	);
-
-	try {
-		await mcpClient.connect(transport);
-		console.log('MCPサーバーに接続しました');
-	} catch (error) {
-		console.error('MCPサーバーへの接続に失敗しました:', error);
-		throw error;
-	}
-}
 
 const app = express();
 app.use(bodyParser.json({ limit: '70mb' }));
@@ -74,15 +58,7 @@ if (import.meta.env.PROD) {
 	console.log('Attempting to start server...');
 	app.listen(3000, async () => {
 		console.log(`Server is running on port ${3000}`);
-		try {
-			await initialize();
-			console.log('MCP connection established');
-		} catch (error) {
-			console.error('Failed to connect to MCP:', error);
-		}
 	});
-} else {
-	await initialize();
 }
 
 export const viteNodeApp = app;
