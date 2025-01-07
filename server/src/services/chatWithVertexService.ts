@@ -102,8 +102,7 @@ export class ChatWithVertexService {
 
 			const model = this._vertexAi.preview.getGenerativeModel({
 				model: 'gemini-2.0-flash-exp',
-				systemInstruction:
-					'都道府県名や地名、都市名が入力された場合にその文字をローマ字もしくは英語に変換してください。',
+				systemInstruction: '',
 				generationConfig: {
 					maxOutputTokens: 8192,
 					temperature: 1,
