@@ -10,6 +10,7 @@ import {
 	type GenerateContentResponse,
 	type Part,
 	FinishReason,
+	FunctionCallingMode,
 } from '@google-cloud/vertexai';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
@@ -131,6 +132,11 @@ export class ChatWithVertexService {
 
 			const chat = model.startChat({
 				tools: [{ functionDeclarations }],
+				toolConfig: {
+					functionCallingConfig: {
+						mode: FunctionCallingMode.ANY,
+					},
+				},
 				history,
 			});
 
@@ -146,6 +152,10 @@ export class ChatWithVertexService {
 				}
 
 				if (!this.#judgeFunctionCall(response.candidates[0].content.parts)) {
+					console.log(
+						'===================== function calling is not in response =====================',
+					);
+					console.log(JSON.stringify(response));
 					return this.#mergeTextParts(
 						response as Required<Pick<GenerateContentResponse, 'candidates'>>,
 					);
@@ -154,6 +164,10 @@ export class ChatWithVertexService {
 				response = this.#pickOnlyFunctionCall(
 					response as Required<Pick<GenerateContentResponse, 'candidates'>>,
 				);
+				console.log(
+					'===================== function calling is in response =====================',
+				);
+				console.log(JSON.stringify(response));
 				if (!response.candidates) {
 					throw new Error('function call response error');
 				}
