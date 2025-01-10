@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ChatWithVertexService } from '../chatWithVertexService';
+import { ChatService } from '../chatService';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import {
 	FinishReason,
@@ -60,7 +60,7 @@ vi.mock('@google-cloud/vertexai', () => ({
 }));
 
 describe('ChatWithVertexService', () => {
-	let service: ChatWithVertexService;
+	let service: ChatService;
 	let mcpClient: Client;
 
 	beforeEach(() => {
@@ -77,7 +77,7 @@ describe('ChatWithVertexService', () => {
 				},
 			},
 		);
-		service = new ChatWithVertexService(mcpClient);
+		service = new ChatService(mcpClient);
 	});
 
 	describe('generateResponse', () => {

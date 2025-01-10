@@ -1,193 +1,230 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { MessageParam } from '@anthropic-ai/sdk/resources/index';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { FunctionCall } from '../types/chat.types.js';
+import {
+	HarmCategory,
+	HarmBlockThreshold,
+	VertexAI,
+	type FunctionDeclaration,
+	type FunctionDeclarationSchema,
+	type Content,
+	type FunctionResponsePart,
+	type GenerateContentResponse,
+	type Part,
+	FinishReason,
+	FunctionCallingMode,
+} from '@google-cloud/vertexai';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 
 export class ChatService {
-	private anthropic: Anthropic;
 	private _mcpClient: Client;
+	private _vertexAi: VertexAI;
 
 	constructor(mcpClient: Client) {
-		const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-		if (!apiKey) {
-			throw new Error('ANTHROPIC_API_KEY is not set');
-		}
-		this.anthropic = new Anthropic({
-			apiKey: apiKey,
-		});
-
 		this._mcpClient = mcpClient;
+
+		const project = import.meta.env.VITE_GOOGLE_PROJECT_NAME;
+		this._vertexAi = new VertexAI({ project, location: 'us-central1' });
 	}
 
-	async generateResponse(
-		message: string,
-	): Promise<{ content: string; functionCalls: FunctionCall[] }> {
+	async #conectionMcpServer() {
+		// SSE transportの設定
+		const transport = new SSEClientTransport(
+			new URL('http://localhost:3334/events'),
+		);
+
 		try {
-			// MCPサーバーからプロンプトとツールを取得
-			const mcpPrompt = await this._mcpClient.getPrompt({
-				name: 'Default Prompt',
+			await this._mcpClient.connect(transport);
+			console.log('MCPサーバーに接続しました');
+		} catch (error) {
+			console.error('MCPサーバーへの接続に失敗しました:', error);
+			throw error;
+		}
+	}
+
+	#closeConnectionWithMcpServer() {
+		this._mcpClient.close();
+		console.log('MCPサーバーから切断しました');
+	}
+
+	#createFunctionDeclaration(
+		tools: Awaited<ReturnType<Client['listTools']>>['tools'],
+	): FunctionDeclaration[] {
+		const functionDeclarations: FunctionDeclaration[] = [];
+
+		for (const tool of tools) {
+			functionDeclarations.push({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.inputSchema as unknown as FunctionDeclarationSchema,
 			});
+		}
+
+		return functionDeclarations;
+	}
+
+	#judgeFunctionCall(parts: Part[]) {
+		return parts.some((part) => part?.functionCall);
+	}
+
+	#mergeTextParts(
+		response: Required<Pick<GenerateContentResponse, 'candidates'>>,
+	) {
+		let mergeText = '';
+		if (response.candidates[0].content.parts.length >= 2) {
+			for (const part of response.candidates[0].content.parts) {
+				if ('text' in part) {
+					mergeText += part.text;
+				}
+			}
+			response.candidates[0].content.parts = [{ text: mergeText }];
+		}
+		return response;
+	}
+
+	#pickOnlyFunctionCall(
+		response: Required<Pick<GenerateContentResponse, 'candidates'>>,
+	): GenerateContentResponse {
+		const pickFunctionCallPart = response.candidates[0].content.parts.filter(
+			(part) => part.functionCall,
+		);
+		response.candidates[0].content.parts = pickFunctionCallPart;
+		return response;
+	}
+
+	async generateResponse(message: string): Promise<GenerateContentResponse> {
+		try {
+			await this.#conectionMcpServer();
 			const tools = await this._mcpClient.listTools();
+			const functionDeclarations = this.#createFunctionDeclaration(tools.tools);
+			console.log(
+				'===================== functionDeclarations =====================',
+			);
+			console.log(JSON.stringify(functionDeclarations));
 
-			const messages: MessageParam[] = [
-				{
-					role: 'user',
-					content: message,
+			const model = this._vertexAi.preview.getGenerativeModel({
+				model: 'gemini-2.0-flash-exp',
+				systemInstruction: '',
+				generationConfig: {
+					maxOutputTokens: 8192,
+					temperature: 1,
+					topP: 0.95,
 				},
-			];
+				safetySettings: [
+					{
+						category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+						threshold: HarmBlockThreshold.BLOCK_NONE,
+					},
+					{
+						category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+						threshold: HarmBlockThreshold.BLOCK_NONE,
+					},
+					{
+						category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+						threshold: HarmBlockThreshold.BLOCK_NONE,
+					},
+					{
+						category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+						threshold: HarmBlockThreshold.BLOCK_NONE,
+					},
+				],
+			});
+			const history: Content[] = [];
 
-			const functionCalls: FunctionCall[] = [];
-			let finalContent = '';
+			const chat = model.startChat({
+				tools: [{ functionDeclarations }],
+				toolConfig: {
+					functionCallingConfig: {
+						mode: FunctionCallingMode.ANY,
+					},
+				},
+				history,
+			});
+
+			let sendMessage: string | Array<string | Part> = message;
 
 			while (true) {
-				const response = await this.anthropic.messages.create({
-					model: 'claude-3-5-sonnet-20241022',
-					max_tokens: 8192,
-					system: [
-						{
-							type: 'text',
-							text: mcpPrompt.messages[0].content.text as string,
+				const responseFromAi = await chat.sendMessage(sendMessage);
+				let response = responseFromAi.response;
+				console.log('===================== response =====================');
+				console.log(JSON.stringify(response));
+				if (!response.candidates) {
+					throw new Error('vertex ai call error');
+				}
+
+				if (!this.#judgeFunctionCall(response.candidates[0].content.parts)) {
+					console.log(
+						'===================== function calling is not in response =====================',
+					);
+					console.log(JSON.stringify(response));
+					return this.#mergeTextParts(
+						response as Required<Pick<GenerateContentResponse, 'candidates'>>,
+					);
+				}
+
+				response = this.#pickOnlyFunctionCall(
+					response as Required<Pick<GenerateContentResponse, 'candidates'>>,
+				);
+				console.log(
+					'===================== function calling is in response =====================',
+				);
+				console.log(JSON.stringify(response));
+				if (!response.candidates) {
+					throw new Error('function call response error');
+				}
+
+				sendMessage = [];
+				for (const p of response.candidates[0].content.parts) {
+					if (!p.functionCall) {
+						if (response.candidates[0].finishReason) {
+							switch (response.candidates[0].finishReason) {
+								case FinishReason.STOP:
+									console.log('STOP');
+									return response;
+								// TODO; 他エラーケースについて要確認
+								case FinishReason.FINISH_REASON_UNSPECIFIED:
+									break;
+								case FinishReason.MAX_TOKENS:
+									break;
+								case FinishReason.PROHIBITED_CONTENT:
+									break;
+								default:
+									break;
+							}
+							continue;
+						}
+						continue;
+					}
+
+					const { name, args } = p.functionCall;
+					const result = await this._mcpClient.callTool({
+						name,
+						arguments: args as { [key: string]: unknown },
+					});
+					console.log('===================== result =====================');
+					console.log(JSON.stringify(result));
+
+					if (!result || !Array.isArray(result.content)) {
+						throw new Error('Invalid result format');
+					}
+
+					const functionResponsePart: FunctionResponsePart = {
+						functionResponse: {
+							name,
+							response: result.content[0],
 						},
-					],
-					messages,
-					tools: tools.tools.map((tool) => ({
-						name: tool.name,
-						description: tool.description,
-						input_schema: tool.inputSchema,
-					})),
-				});
+					};
 
-				console.log(JSON.stringify(response, null, 2));
-				// レスポンスをメッセージに追加
-				messages.push({
-					role: response.role,
-					content: response.content,
-				});
-
-				// stop_reasonに基づく処理
-				switch (response.stop_reason) {
-					case 'end_turn': {
-						// 通常の応答完了
-						for (const content of response.content) {
-							if (content.type === 'text') {
-								finalContent = content.text;
-							}
-						}
-						return { content: finalContent, functionCalls };
-					}
-
-					case 'max_tokens': {
-						// トークン制限に達した場合
-						console.warn('最大トークン数に達しました');
-						for (const content of response.content) {
-							if (content.type === 'text') {
-								finalContent += content.text;
-							}
-						}
-						return {
-							content: `${finalContent}\n[注意: 応答が最大トークン数に達したため途中で切れている可能性があります]`,
-							functionCalls,
-						};
-					}
-
-					case 'tool_use': {
-						// ツール使用の要求
-						for (const content of response.content) {
-							switch (content.type) {
-								case 'text':
-									finalContent += content.text;
-									break;
-								case 'tool_use': {
-									const tool = tools.tools.find((t) => t.name === content.name);
-
-									if (!tool) {
-										throw new Error(`Tool ${content.name} not found`);
-									}
-
-									try {
-										const result = await this._mcpClient.callTool({
-											name: tool.name,
-											arguments: content.input as Record<string, unknown>,
-										});
-
-										functionCalls.push({
-											name: tool.name,
-											description: tool.description,
-											parameters: content.input as Record<string, unknown>,
-											result,
-											timestamp: new Date().toISOString(),
-										});
-
-										messages.push({
-											role: 'user',
-											content: [
-												{
-													type: 'tool_result',
-													tool_use_id: content.id,
-													// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-													content: result.content as any,
-												},
-											],
-										});
-										console.log('Tool result:', JSON.stringify(result));
-									} catch (error) {
-										const err = error as Error;
-										functionCalls.push({
-											name: tool.name,
-											description: tool.description,
-											parameters: content.input as Record<string, unknown>,
-											error: {
-												message: err.message,
-												code: 'TOOL_EXECUTION_ERROR',
-											},
-											timestamp: new Date().toISOString(),
-										});
-
-										messages.push({
-											role: 'user',
-											content: [
-												{
-													type: 'tool_result',
-													tool_use_id: content.id,
-													content: err.message,
-													is_error: true,
-												},
-											],
-										});
-									}
-									break;
-								}
-							}
-						}
-						break; // whileループを継続
-					}
-
-					case 'stop_sequence': {
-						// 停止シーケンスに到達
-						console.log('停止シーケンスに到達しました');
-						for (const content of response.content) {
-							if (content.type === 'text') {
-								finalContent += content.text;
-							}
-						}
-						return { content: finalContent, functionCalls };
-					}
-
-					default: {
-						// 未知のstop_reason
-						console.warn(`未知のstop_reason: ${response.stop_reason}`);
-						for (const content of response.content) {
-							if (content.type === 'text') {
-								finalContent += content.text;
-							}
-						}
-						return { content: finalContent, functionCalls };
-					}
+					sendMessage.push(functionResponsePart);
+					console.log(
+						'===================== sendMessage =====================',
+					);
+					console.log(JSON.stringify(sendMessage));
 				}
 			}
 		} catch (error) {
-			console.error('Error generating response with Claude:', error);
+			console.error('Error generating response with VertexAI:', error);
 			throw error;
+		} finally {
+			this.#closeConnectionWithMcpServer();
 		}
 	}
 }

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+.env
+.tool-versions
+
+prompts/system_instruction.txt

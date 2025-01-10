@@ -30,7 +30,7 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
 	const controller = new ChatController(mcpClient);
 	try {
-		const result = await controller.chatWithVertexAi(req.body.message ?? '');
+		const result = await controller.chat(req.body.message ?? '');
 
 		for await (const chunk of result) {
 			res.write(
