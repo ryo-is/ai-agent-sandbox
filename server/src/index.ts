@@ -56,8 +56,8 @@ app.post('/chat', async (req, res) => {
 
 if (import.meta.env.PROD) {
 	console.log('Attempting to start server...');
-	app.listen(3000, async () => {
-		console.log(`Server is running on port ${3000}`);
+	app.listen(4001, async () => {
+		console.log(`Server is running on port ${4001}`);
 	});
 }
 

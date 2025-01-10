@@ -7,7 +7,7 @@ import { MCPServer } from './MCPServer.js';
 config();
 
 const mcpServer = new MCPServer();
-const port = process.env.PORT ? Number.parseInt(process.env.PORT) : 3000;
+const port = process.env.PORT ? Number.parseInt(process.env.PORT) : 3334;
 const connections = new Map<string, SSEServerTransport>();
 
 createServer(async (req, res) => {

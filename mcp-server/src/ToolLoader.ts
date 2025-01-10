@@ -1,7 +1,5 @@
-import { readdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { ToolHandler } from './types.js';
+import { weatherTool } from './tools/weather.js';
 
 export class ToolLoader {
 	private tools: Map<string, ToolHandler>;
@@ -32,29 +30,9 @@ export class ToolLoader {
 	}
 
 	/**
-	 * ツールディレクトリをスキャンしてツールをロードする
+	 * ツールをロードする
 	 */
 	public async loadTools(): Promise<void> {
-		const currentDir = dirname(fileURLToPath(import.meta.url));
-		const toolsDir = join(currentDir, 'tools');
-		const files = await readdir(toolsDir);
-
-		for (const file of files) {
-			// .tsまたは.jsファイルのみを対象とする
-			if (file.endsWith('.js') || file.endsWith('.ts')) {
-				try {
-					const module = await import(join('file://', toolsDir, file));
-					if (
-						module.default &&
-						typeof module.default === 'object' &&
-						'definition' in module.default
-					) {
-						this.registerTool(module.default as ToolHandler);
-					}
-				} catch (error) {
-					console.error(`Failed to load tool from ${file}:`, error);
-				}
-			}
-		}
+		this.registerTool(weatherTool);
 	}
 }
