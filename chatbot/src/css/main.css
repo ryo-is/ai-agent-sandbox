@@ -1,0 +1,8 @@
+@layer main {
+  #spr-aladdin_generate_client {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: calc(infinity);
+  }
+}

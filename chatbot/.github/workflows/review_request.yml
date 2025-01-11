@@ -1,0 +1,32 @@
+name: Slack Notification When PR become ready for review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  reviewRequestNotification:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login != 'renovate'
+    steps:
+      - uses: actions/checkout@v2.2.0
+      - name: Get Reviewers
+        id: get_reviewers
+        run: |
+          reviewers=$(echo '${{ toJson(github.event.pull_request.requested_reviewers) }}' | jq -r '.[].login' | sed 's/^/@/' | paste -sd, -)
+          echo "REVIEWERS=$reviewers" >> $GITHUB_OUTPUT
+      - name: Slack Notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_ALADDIN }}
+          SLACK_LINK_NAMES: true
+          SLACK_MESSAGE: |
+            レビューをお願いします🙏 @dev_a
+            リポジトリ: ${{ github.repository }}
+            <${{ github.event.pull_request.html_url }}|${{ github.event.pull_request.title }}>
+            作成者: ${{ github.event.pull_request.user.login }}
+            レビュワー: ${{ steps.get_reviewers.outputs.REVIEWERS }}
+          SLACK_USERNAME: "ReviewRequestBot"
+          MSG_MINIMAL: true

@@ -1,0 +1,28 @@
+{
+	"name": "@ai-agent-sandbox/chatbot",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && node build.js",
+		"preview": "vite preview",
+		"lint": "biome lint **/*.{ts,tsx}",
+		"fix": "biome lint --write  **/*.{ts,tsx}",
+		"fmt": "biome format --write  **/*.{ts,tsx}"
+	},
+	"dependencies": {
+		"dompurify": "3.2.3",
+		"html-react-parser": "5.2.1",
+		"marked": "15.0.4",
+		"preact": "10.24.3",
+		"uuid": "11.0.4"
+	},
+	"devDependencies": {
+		"@preact/preset-vite": "2.9.1",
+		"@types/dompurify": "3.0.5",
+		"@types/marked": "5.0.2",
+		"@vanilla-extract/vite-plugin": "4.0.18",
+		"vite-plugin-css-injected-by-js": "3.5.2"
+	}
+}
